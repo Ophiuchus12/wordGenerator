@@ -17,7 +17,6 @@ const EmotionalAlgorithmicArt = () => {
   const timeRef = useRef(0);
   const particlesRef = useRef([]);
 
-  // Analyser l'émotion (instantané, sans API)
   const analyzeFeeling = (emotion) => {
     if (!emotion.trim()) return;
 
@@ -26,7 +25,6 @@ const EmotionalAlgorithmicArt = () => {
     setCurrentEmotion(emotion);
   };
 
-  // Initialiser les particules
   const initializeParticles = useCallback((canvas) => {
     const numParticles = Math.floor(visualParams.density * 200);
     particlesRef.current = Array.from({ length: numParticles }, () => ({
@@ -43,8 +41,42 @@ const EmotionalAlgorithmicArt = () => {
     }));
   }, [visualParams]);
 
-  // Fonction pour dessiner les différentes formes
-  const drawShape = (ctx, particle, shape, size, time, index) => {
+  // Fonction pour dessiner les formes avec effet glow
+  const drawShape = (ctx, particle, shape, size, time, index, color, glowIntensity) => {
+    // Sauvegarder l'état du contexte
+    ctx.save();
+
+    // Appliquer l'effet glow en plusieurs couches pour un rendu plus doux
+    const glowLayers = [
+      { blur: 20 * glowIntensity, alpha: 0.4 },
+      { blur: 10 * glowIntensity, alpha: 0.6 },
+      { blur: 5 * glowIntensity, alpha: 0.8 }
+    ];
+
+    // Dessiner les couches de glow
+    glowLayers.forEach(layer => {
+      ctx.shadowBlur = layer.blur;
+      ctx.shadowColor = color;
+      ctx.globalAlpha = layer.alpha * particle.life;
+
+      drawShapeGeometry(ctx, particle, shape, size, time, index);
+    });
+
+    // Réinitialiser pour dessiner la forme principale
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // Dessiner la forme principale (bien visible)
+    ctx.save();
+    ctx.globalAlpha = particle.life;
+    drawShapeGeometry(ctx, particle, shape, size, time, index);
+    ctx.restore();
+  };
+
+  // Géométrie des formes (séparée pour réutilisation)
+  const drawShapeGeometry = (ctx, particle, shape, size, time, index) => {
     switch (shape) {
       case 'stars':
         ctx.beginPath();
@@ -195,7 +227,6 @@ const EmotionalAlgorithmicArt = () => {
     }
   };
 
-  // Animation avec tous les rythmes
   const animate = useCallback((canvas, ctx) => {
     timeRef.current += 0.016 * visualParams.speed;
     const time = timeRef.current;
@@ -291,18 +322,23 @@ const EmotionalAlgorithmicArt = () => {
 
       particle.angle += particle.angleSpeed * visualParams.energy;
 
-      // Dessin
+      // Dessin avec glow
       ctx.save();
       ctx.translate(particle.x, particle.y);
       ctx.rotate(particle.angle);
 
       const colorIndex = index % visualParams.colors.length;
+      const baseColor = visualParams.colors[colorIndex];
       const alpha = Math.floor(particle.life * 255).toString(16).padStart(2, '0');
-      ctx.fillStyle = visualParams.colors[colorIndex] + alpha;
-      ctx.strokeStyle = visualParams.colors[colorIndex];
+
+      ctx.fillStyle = baseColor + alpha;
+      ctx.strokeStyle = baseColor + alpha;
       ctx.lineWidth = 2;
 
-      drawShape(ctx, particle, visualParams.shape, particle.size, time, index);
+      // Intensité du glow basée sur l'énergie
+      const glowIntensity = visualParams.energy;
+
+      drawShape(ctx, particle, visualParams.shape, particle.size, time, index, baseColor, glowIntensity);
 
       ctx.restore();
 
@@ -314,7 +350,7 @@ const EmotionalAlgorithmicArt = () => {
       }
     });
 
-    // Connexions entre particules (optimisé)
+    // Connexions avec glow
     if (visualParams.energy > 0.4) {
       const maxConnections = Math.min(particlesRef.current.length, 50);
       for (let i = 0; i < maxConnections; i++) {
@@ -326,13 +362,20 @@ const EmotionalAlgorithmicArt = () => {
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < 100) {
+            const alpha = (1 - distance / 100) * 0.2 * visualParams.energy;
+            const connectionColor = visualParams.colors[0];
+
+            // Glow pour les connexions
+            ctx.save();
+            ctx.shadowBlur = 10 * visualParams.energy;
+            ctx.shadowColor = connectionColor;
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
-            const alpha = (1 - distance / 100) * 0.2 * visualParams.energy;
-            ctx.strokeStyle = visualParams.colors[0] + Math.floor(alpha * 255).toString(16).padStart(2, '0');
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = connectionColor + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+            ctx.lineWidth = 1.5;
             ctx.stroke();
+            ctx.restore();
           }
         }
       }
@@ -341,7 +384,6 @@ const EmotionalAlgorithmicArt = () => {
     animationRef.current = requestAnimationFrame(() => animate(canvas, ctx));
   }, [visualParams]);
 
-  // Configuration canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -378,11 +420,10 @@ const EmotionalAlgorithmicArt = () => {
       <canvas ref={canvasRef} className="absolute inset-0" />
 
       <div className="absolute top-8 left-8 z-10">
-        <h1 className="text-white text-4xl font-light">The feelings machine</h1>
+        <h1 className="text-white text-4xl font-light">The feeling machine</h1>
         {currentEmotion && (
           <div className="mt-2">
             <p className="text-white/80 text-lg">Emotion: {currentEmotion}</p>
-
           </div>
         )}
       </div>
